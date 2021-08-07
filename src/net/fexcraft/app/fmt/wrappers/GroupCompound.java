@@ -1,41 +1,59 @@
 package net.fexcraft.app.fmt.wrappers;
 
-import java.awt.Color;
+import static net.fexcraft.app.fmt.utils.Logging.log;
+import static net.fexcraft.app.fmt.utils.Translator.translate;
+import static org.liquidengine.legui.event.MouseClickEvent.MouseClickAction.CLICK;
+
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 
+import org.liquidengine.legui.component.Button;
+import org.liquidengine.legui.component.Dialog;
+import org.liquidengine.legui.component.Label;
+import org.liquidengine.legui.component.SelectBox;
+import org.liquidengine.legui.event.MouseClickEvent;
+import org.liquidengine.legui.listener.MouseClickEventListener;
 import org.lwjgl.opengl.GL11;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 import net.fexcraft.app.fmt.FMTB;
-import net.fexcraft.app.fmt.porters.JsonToTMT;
+import net.fexcraft.app.fmt.porters.JsonToFMT;
+import net.fexcraft.app.fmt.porters.PorterManager.ExImPorter;
 import net.fexcraft.app.fmt.ui.DialogBox;
 import net.fexcraft.app.fmt.ui.DialogBox.DialogTask;
+import net.fexcraft.app.fmt.ui.TexViewBox;
 import net.fexcraft.app.fmt.ui.editor.Editors;
 import net.fexcraft.app.fmt.ui.editor.GeneralEditor;
-import net.fexcraft.app.fmt.ui.editor.ModelGroupEditor;
-import net.fexcraft.app.fmt.ui.editor.TextureEditor;
+import net.fexcraft.app.fmt.ui.editor.GroupEditor;
+import net.fexcraft.app.fmt.ui.editor.ModelEditor;
+import net.fexcraft.app.fmt.ui.editor.UVEditor;
 import net.fexcraft.app.fmt.ui.field.Field;
+import net.fexcraft.app.fmt.ui.field.NumberField;
 import net.fexcraft.app.fmt.ui.tree.SubTreeGroup;
 import net.fexcraft.app.fmt.ui.tree.TreeGroup;
 import net.fexcraft.app.fmt.ui.tree.Trees;
 import net.fexcraft.app.fmt.utils.RayCoastAway;
+import net.fexcraft.app.fmt.utils.SessionHandler;
 import net.fexcraft.app.fmt.utils.Settings;
-import net.fexcraft.app.fmt.utils.TextureManager;
-import net.fexcraft.app.fmt.utils.TextureManager.Texture;
 import net.fexcraft.app.fmt.utils.Translator;
+import net.fexcraft.app.fmt.utils.texture.Texture;
+import net.fexcraft.app.fmt.utils.texture.TextureGroup;
+import net.fexcraft.app.fmt.utils.texture.TextureManager;
 import net.fexcraft.lib.common.Static;
 import net.fexcraft.lib.common.json.JsonUtil;
 import net.fexcraft.lib.common.math.RGB;
@@ -43,23 +61,31 @@ import net.fexcraft.lib.common.math.Vec3f;
 
 public class GroupCompound {
 	
-	public int textureSizeX = 256, textureSizeY = 256, textureScale = 1;
-	public ArrayList<String> creators = new ArrayList<>();
+	public int textureSizeX = 256, textureSizeY = 256;
+	private LinkedHashMap<String, Boolean> creators = new LinkedHashMap<>();
+	private ArrayList<String> authors = new ArrayList<>();
 	private GroupList groups = new GroupList();
 	public PolygonWrapper lastselected;
 	public File file, origin;
+	public ExImPorter porter;
 	public float rate = 1f;
-	public String texture;
 	public String name;
+	public TextureGroup texgroup;
 	//
 	public static long SELECTED_POLYGONS;
 	public boolean visible = true, minimized;
 	public Vec3f pos, rot, scale;
 	public TreeGroup button;
+	public String helpertex;
+	public boolean subhelper;
+	public float opacity = 1f;
+	public RGB op_color;
+	public ConcurrentLinkedQueue<PolygonWrapper> detached = new ConcurrentLinkedQueue<>();
 	
 	public GroupCompound(File origin){
 		this.origin = origin; name = "unnamed model";
-		recompile(); this.updateFields();
+		recompile();
+		updateFields();
 		if(Trees.helper != null) button = new TreeGroup(Trees.helper, this);
 	}
 	
@@ -85,22 +111,28 @@ public class GroupCompound {
 			GL11.glScalef(scale.xCoord, scale.yCoord, scale.zCoord);
 		}
 		if(RayCoastAway.PICKING){
-			if(TextureEditor.pixelMode()){
+			/*if(pencil){
 				TextureManager.bindTexture(getTempTex());
 				groups.forEach(elm -> elm.render(false));
 			}
-			else{
-				groups.forEach(elm -> elm.renderPicking());
-			}
-			RayCoastAway.doTest(false);
+			else{}*/
+			GL11.glDisable(GL11.GL_TEXTURE_2D); 
+			groups.forEach(elm -> elm.renderPicking());
+			GL11.glEnable(GL11.GL_TEXTURE_2D);
+			RayCoastAway.doTest(false, null, false);//pencil);
 		}
 		else{
 			if(Settings.preview_colorpicker()){
+				GL11.glDisable(GL11.GL_TEXTURE_2D); 
 				groups.forEach(elm -> elm.renderPicking());
+				GL11.glEnable(GL11.GL_TEXTURE_2D);
 			}
 			else{
 				//TextureManager.bindTexture(texture == null ? "blank" : texture);
-				groups.forEach(elm -> { TextureManager.bindTexture(elm.getApplicableTexture(this)); elm.render(true); });
+				groups.forEach(elm -> { 
+					elm.bindApplicableTexture(this);
+					elm.render(true);
+				});
 				GL11.glDisable(GL11.GL_TEXTURE_2D);
 				groups.forEach(elm -> elm.renderLines());
 				GL11.glEnable(GL11.GL_TEXTURE_2D);
@@ -108,6 +140,20 @@ public class GroupCompound {
 		}
 		if(scale != null){
 			GL11.glPopMatrix();
+		}
+		if(!detached.isEmpty() && !RayCoastAway.PICKING){
+			for(PolygonWrapper poly : detached){
+				if(!poly.getTurboList().visible) continue;
+				poly.getTurboList().bindApplicableTexture(this);
+				poly.render(true, false, false);
+			}
+			GL11.glDisable(GL11.GL_TEXTURE_2D);
+			for(PolygonWrapper poly : detached){
+				if(!poly.getTurboList().visible) continue;
+				poly.renderLines(true, false, false);
+			}
+			GL11.glEnable(GL11.GL_TEXTURE_2D);
+			detached.clear();
 		}
 		if(rot != null){
 			GL11.glRotatef(-rot.zCoord, 0, 0, 1);
@@ -120,38 +166,36 @@ public class GroupCompound {
 		}
 	}
 	
-	public static final String temptexid = "./temp/calculation_texture";
+	public static final String temptexid = "./temp/calculation_texture_";
 	
-	private String getTempTex(){
-		Texture tex = TextureManager.getTexture(temptexid, true);
-		int texX = this.textureSizeX * this.textureScale, texY = this.textureSizeY * this.textureScale;
-		if(tex == null || (tex.getImage().getWidth() != texX || tex.getImage().getHeight() != texY)){
-			if(texX >= 8192 || texY >= 8192){ /*//TODO*/ }
-			else{
-				BufferedImage image = null;
-				if(tex == null){
-					image = new BufferedImage(texX, texY, BufferedImage.TYPE_INT_ARGB);
-				}
-				else{
-					tex.resize(texX, texY, null); image = tex.getImage();
-				}
-				int lastint = 0;
-				for(int x = 0; x < texX; x++){
-					for(int y = 0; y < texY; y++){
-						image.setRGB(x, y, new Color(lastint).getRGB()); lastint++;
-					}
-				}
-				if(tex == null){
-					TextureManager.loadTextureFromZip(image, temptexid, false, true);
-				}
-				else{
-					tex.rebind(); TextureManager.saveTexture(temptexid);
-				}
-			}
+	public Texture getTempTex(PolygonWrapper wrapper){
+		Texture tex = TextureManager.getTexture(temptexid + wrapper.getTextureGroup().group, true);
+		if(tex == null){
+			TextureGroup texgroup = wrapper.getTextureGroup();
+			String texid = temptexid + wrapper.getTextureGroup().group;
+			tex = TextureManager.createTexture(texid, texgroup.texture.getWidth(), texgroup.texture.getHeight());
+			tex.setFile(new File(texid + ".png"));
+			colortexcalc(tex);
 		}
-		return temptexid;
+		else if(tex.getWidth() != texgroup.texture.getWidth() || tex.getHeight() != texgroup.texture.getHeight()){
+			tex.resize(texgroup.texture.getWidth(), texgroup.texture.getHeight());
+			colortexcalc(tex);
+		}
+		return tex;
 	}
 	
+	private void colortexcalc(Texture tex){
+		int lastint = 0;
+		for(int x = 0; x < tex.getWidth(); x++){
+			for(int y = 0; y < tex.getHeight(); y++){
+				tex.set(x, y, new RGB(lastint).toByteArray());
+				lastint++;
+			}
+		}
+		tex.save();
+		tex.rebind();
+	}
+
 	public final ArrayList<PolygonWrapper> getSelected(){
 		ArrayList<PolygonWrapper> polis = new ArrayList<>();
 		for(TurboList list : groups){
@@ -230,7 +274,7 @@ public class GroupCompound {
 			this.updateFields();
 		}
 		catch(Exception e){
-			e.printStackTrace();
+			log(e);
 		}
 	}
 
@@ -297,6 +341,13 @@ public class GroupCompound {
 			GeneralEditor.texture_x.apply(0);
 			GeneralEditor.texture_y.apply(0);
 			//
+			GeneralEditor.side0_x.apply(0);
+			GeneralEditor.side0_y.apply(0);
+			GeneralEditor.side0_z.apply(0);
+			GeneralEditor.side1_x.apply(0);
+			GeneralEditor.side1_y.apply(0);
+			GeneralEditor.side1_z.apply(0);
+			//
 			GeneralEditor.polygon_group.setSelected("> new group <", true);
 			GeneralEditor.polygon_name.getTextState().setText(FMTB.NO_POLYGON_SELECTED);
 			GeneralEditor.polygon_type.setSelected("box", true);
@@ -320,6 +371,13 @@ public class GroupCompound {
 			//
 			GeneralEditor.texture_x.apply(poly.getFloat("tex", true, false, false));
 			GeneralEditor.texture_y.apply(poly.getFloat("tex", false, true, false));
+			//
+			GeneralEditor.side0_x.apply(poly.getFloat("side0", true, false, false));
+			GeneralEditor.side0_y.apply(poly.getFloat("side0", false, true, false));
+			GeneralEditor.side0_z.apply(poly.getFloat("side0", false, false, true));
+			GeneralEditor.side1_x.apply(poly.getFloat("side1", true, false, false));
+			GeneralEditor.side1_y.apply(poly.getFloat("side1", false, true, false));
+			GeneralEditor.side1_z.apply(poly.getFloat("side1", false, false, true));
 			//
 			GeneralEditor.polygon_group.setSelected(this.getFirstSelectedGroupName(), true);
 			GeneralEditor.polygon_name.getTextState().setText(poly.name == null ? "unnamed" : poly.name);
@@ -375,8 +433,18 @@ public class GroupCompound {
 			GeneralEditor.cyl7_y.apply(poly.getFloat("cyl7", false, true, false));
 			GeneralEditor.cyl7_z.apply(poly.getFloat("cyl7", false, false, true));
 		}
+		UVEditor.polygon_name.getTextState().setText(poly == null ? FMTB.NO_POLYGON_SELECTED : poly.name == null ? "unnamed" : poly.name);
+		UVEditor.refreshEntries(poly, null);
+		if(poly == null){
+			UVEditor.texture_x.apply(0);
+			UVEditor.texture_y.apply(0);
+		}
+		else{
+			UVEditor.texture_x.apply(poly.getFloat("tex", true, false, false));
+			UVEditor.texture_y.apply(poly.getFloat("tex", false, true, false));
+		}
 		//
-		if(poly == null || !poly.getType().isTexRectB()){
+		/*if(poly == null || !poly.getType().isTexRectB()){
 			for(int i = 0; i < 6; i++){
 				GeneralEditor.texrect_b[i][0].apply(0);
 				GeneralEditor.texrect_b[i][1].apply(0);
@@ -399,68 +467,72 @@ public class GroupCompound {
 		else{
 			for(int i = 0; i < 6; i++){
 				for(int j = 0; j < 8; j++){
-					if(j % 2 == 0) GeneralEditor.texrect_a[i][j].apply(poly.getFloat("texpos" + i + ":" + j + "x", true, false, false));
-					else GeneralEditor.texrect_a[i][j].apply(poly.getFloat("texpos" + i + ":" + j + "y", false, true, false));
+					if(j % 2 == 0) GeneralEditor.texrect_a[i][j].apply(poly.getFloat("texpos" + i + ":" + j, true, false, false));
+					else GeneralEditor.texrect_a[i][j].apply(poly.getFloat("texpos" + i + ":" + j, false, true, false));
 				}
 			}
-		}
+		}*/
 		if(poly == null || !poly.getType().isMarker()){
 			GeneralEditor.marker_color.apply(0xffffff);
 			GeneralEditor.marker_biped.apply(0);
 			GeneralEditor.marker_scale.apply(0);
 			GeneralEditor.marker_angle.apply(0);
+			GeneralEditor.marker_detached.apply(0);
 		}
 		else{
 			GeneralEditor.marker_color.apply(poly.getFloat("marker_color", true, false, false));
 			GeneralEditor.marker_biped.apply(poly.getFloat("marker_biped", true, false, false));
 			GeneralEditor.marker_scale.apply(poly.getFloat("marker_scale", true, false, false));
 			GeneralEditor.marker_angle.apply(poly.getFloat("marker_angle", true, false, false));
+			GeneralEditor.marker_detached.apply(poly.getFloat("marker_detached", true, false, false));
 		}
 		TurboList list = this.getFirstSelectedGroup();
 		if(list == null){
-			ModelGroupEditor.group_color.apply(0xffffff);
-			ModelGroupEditor.group_name.getTextState().setText(FMTB.NO_POLYGON_SELECTED);
-			ModelGroupEditor.group_texture.getTextState().setText(FMTB.NO_POLYGON_SELECTED);
-			ModelGroupEditor.g_tex_x.setSelected(8f, true);
-			ModelGroupEditor.g_tex_y.setSelected(8f, true);
-			ModelGroupEditor.g_tex_s.setSelected(8f, true);
-			ModelGroupEditor.exoff_x.apply(0);
-			ModelGroupEditor.exoff_y.apply(0);
-			ModelGroupEditor.exoff_z.apply(0);
+			GroupEditor.group_color.apply(0xffffff);
+			GroupEditor.group_name.getTextState().setText(FMTB.NO_POLYGON_SELECTED);
+			GroupEditor.group_texture.setSelected(0, true);
+			GroupEditor.g_tex_x.setSelected(8f, true);
+			GroupEditor.g_tex_y.setSelected(8f, true);
+			//GroupEditor.g_tex_s.setSelected(1f, true);
+			GroupEditor.exoff_x.apply(0);
+			GroupEditor.exoff_y.apply(0);
+			GroupEditor.exoff_z.apply(0);
 		}
 		else{
-			ModelGroupEditor.group_color.apply((list.color == null ? RGB.WHITE : list.color).packed);
-			ModelGroupEditor.group_name.getTextState().setText(list.id);
-			ModelGroupEditor.g_tex_x.setSelected((float)list.textureX, true);
-			ModelGroupEditor.g_tex_y.setSelected((float)list.textureY, true);
-			ModelGroupEditor.g_tex_s.setSelected((float)list.textureS, true);
-			ModelGroupEditor.exoff_x.apply(list.exportoffset == null ? 0 : list.exportoffset.xCoord);
-			ModelGroupEditor.exoff_y.apply(list.exportoffset == null ? 0 : list.exportoffset.yCoord);
-			ModelGroupEditor.exoff_z.apply(list.exportoffset == null ? 0 : list.exportoffset.zCoord);
-			//
-			String texname = list.getGroupTexture() + "";
-			if(texname.length() > 32){ texname = texname.substring(texname.length() - 32, texname.length()); }
-			ModelGroupEditor.group_texture.getTextState().setText(texname);
+			GroupEditor.group_color.apply((list.color == null ? RGB.WHITE : list.color).packed);
+			GroupEditor.group_name.getTextState().setText(list.id);
+			if(list.texgroup == null){
+				GroupEditor.group_texture.setSelected(0, true);
+			}
+			else{
+				GroupEditor.group_texture.setSelected(list.texgroup == null ? "none" : list.texgroup.group, true);
+			}
+			GroupEditor.g_tex_x.setSelected((float)list.textureX, true);
+			GroupEditor.g_tex_y.setSelected((float)list.textureY, true);
+			//GroupEditor.g_tex_s.setSelected((float)list.textureS, true);
+			GroupEditor.exoff_x.apply(list.exportoffset == null ? 0 : list.exportoffset.xCoord);
+			GroupEditor.exoff_y.apply(list.exportoffset == null ? 0 : list.exportoffset.yCoord);
+			GroupEditor.exoff_z.apply(list.exportoffset == null ? 0 : list.exportoffset.zCoord);
 		};
-		ModelGroupEditor.animations.refresh(list);
+		GroupEditor.animations.refresh(list);
 		//
-		ModelGroupEditor.pos_x.apply(pos == null ? 0 : pos.xCoord);
-		ModelGroupEditor.pos_y.apply(pos == null ? 0 : pos.yCoord);
-		ModelGroupEditor.pos_z.apply(pos == null ? 0 : pos.zCoord);
-		ModelGroupEditor.poss_x.apply(pos == null ? 0 : pos.xCoord * Static.sixteenth);
-		ModelGroupEditor.poss_y.apply(pos == null ? 0 : pos.yCoord * Static.sixteenth);
-		ModelGroupEditor.poss_z.apply(pos == null ? 0 : pos.zCoord * Static.sixteenth);
-		ModelGroupEditor.rot_x.apply(pos == null ? 0 : rot.xCoord);
-		ModelGroupEditor.rot_y.apply(pos == null ? 0 : rot.yCoord);
-		ModelGroupEditor.rot_z.apply(pos == null ? 0 : rot.zCoord);
-		ModelGroupEditor.m_tex_x.setSelected((float)textureSizeX, true);
-		ModelGroupEditor.m_tex_y.setSelected((float)textureSizeY, true);
-		ModelGroupEditor.m_tex_s.setSelected((float)textureScale, true);
-		ModelGroupEditor.model_name.getTextState().setText(name);
+		ModelEditor.pos_x.apply(pos == null ? 0 : pos.xCoord);
+		ModelEditor.pos_y.apply(pos == null ? 0 : pos.yCoord);
+		ModelEditor.pos_z.apply(pos == null ? 0 : pos.zCoord);
+		ModelEditor.poss_x.apply(pos == null ? 0 : pos.xCoord * Static.sixteenth);
+		ModelEditor.poss_y.apply(pos == null ? 0 : pos.yCoord * Static.sixteenth);
+		ModelEditor.poss_z.apply(pos == null ? 0 : pos.zCoord * Static.sixteenth);
+		ModelEditor.rot_x.apply(pos == null ? 0 : rot.xCoord);
+		ModelEditor.rot_y.apply(pos == null ? 0 : rot.yCoord);
+		ModelEditor.rot_z.apply(pos == null ? 0 : rot.zCoord);
+		ModelEditor.scale.apply(scale == null ? 1 : scale.xCoord);
+		ModelEditor.m_tex_x.setSelected((float)textureSizeX, true);
+		ModelEditor.m_tex_y.setSelected((float)textureSizeY, true);
+		//ModelEditor.m_tex_s.setSelected((float)textureScale, true);
+		ModelEditor.model_name.getTextState().setText(name);
 		//
-		String texname = this.texture + "";
-		if(texname.length() > 64){ texname = texname.substring(texname.length() - 64, texname.length()); }
-		ModelGroupEditor.model_texture.getTextState().setText(texname);
+		ModelEditor.model_texture.setSelected(FMTB.MODEL.texgroup == null ? "none" : FMTB.MODEL.texgroup.group, true);
+		TexViewBox.update();
 	}
 	
 	public float multiply(float flea){
@@ -520,18 +592,31 @@ public class GroupCompound {
 	}*/
 	
 	public long countTotalMRTs(){
-		long i = 0; for(TurboList list : groups) i += list.size(); return i;
+		long l = 0;
+		for(TurboList list : groups) l += list.size();
+		return l;
+	}
+
+	public long countTotalFaces(boolean visonly){
+		long l = 0;
+		for(TurboList list : groups){
+			for(PolygonWrapper poly : list){
+				l += poly.getFacesAmount(visonly);
+			}
+		}
+		return l;
 	}
 	
 	public long countSelectedMRTs(){
-		long i = 0; for(TurboList list : groups){
-			if(list.selected) i += list.size();
-			else for(PolygonWrapper wrapper : list) if(wrapper.selected) i++;
-		} return i;
+		long l = 0; for(TurboList list : groups){
+			if(list.selected) l += list.size();
+			else for(PolygonWrapper wrapper : list) if(wrapper.selected) l++;
+		} return l;
 	}
 
-	public void setTexture(String string){
-		this.texture = string; this.groups.forEach(turbo -> turbo.forEach(poly -> poly.recompile()));
+	public void setTexture(TextureGroup group){
+		texgroup = group;
+		this.groups.forEach(turbo -> turbo.forEach(poly -> poly.recompile()));
 	}
 
 	public int getDirectlySelectedGroupsAmount(){
@@ -551,8 +636,8 @@ public class GroupCompound {
 		/*Trees.polygon.reOrderGroups();*/ return;
 	}
 
-	public void flipShapeboxes(int axis){
-		List<PolygonWrapper> wrappers = this.getSelected().stream().filter(pre -> pre.getType().isShapebox()).collect(Collectors.toList());
+	public void flipShapeboxes(List<PolygonWrapper> list, int axis){
+		List<PolygonWrapper> wrappers = list != null ? list : this.getSelected().stream().filter(pre -> pre.getType().isShapebox()).collect(Collectors.toList());
 		for(PolygonWrapper wrapper : wrappers){
 			if(wrapper instanceof ShapeboxWrapper){
 				Vec3f[] copy = new Vec3f[8]; ShapeboxWrapper shapebox = (ShapeboxWrapper)wrapper;
@@ -597,6 +682,34 @@ public class GroupCompound {
 		} this.updateFields(); return;
 	}
 
+	public void flipBoxPosition(List<PolygonWrapper> list, int axis){
+		List<PolygonWrapper> wrappers = list != null ? list : this.getSelected();
+		for(PolygonWrapper wrapper : wrappers){
+			if(wrapper instanceof BoxWrapper == false) continue;
+			BoxWrapper box = (BoxWrapper)wrapper;
+			switch(axis){
+				case 0:{
+					box.pos.xCoord += box.size.xCoord;
+					box.pos.xCoord = -box.pos.xCoord;
+					break;
+				}
+				case 1:{
+					box.pos.yCoord += box.size.yCoord;
+					box.pos.yCoord = -box.pos.yCoord;
+					break;
+				}
+				case 2:{
+					box.pos.zCoord += box.size.zCoord;
+					box.pos.zCoord = -box.pos.zCoord;
+					break;
+				}
+			}
+			box.recompile();
+		}
+		this.updateFields();
+		return;
+	}
+
 	public void deleteSelected(){
 		DialogBox.showYN(null, () -> {
 			ArrayList<PolygonWrapper> wrapp = this.getSelected();
@@ -611,8 +724,21 @@ public class GroupCompound {
 		return lastselected;
 	}
 	
-	public int tx(TurboList list){ return list == null || list.getGroupTexture() == null ? textureSizeX : list.textureX; }
-	public int ty(TurboList list){ return list == null || list.getGroupTexture() == null ? textureSizeY : list.textureY; }
+	public int tx(TurboList list){
+		return tx(list, true);
+	}
+
+	public int ty(TurboList list){
+		return ty(list, true);
+	}
+	
+	public int tx(TurboList list, boolean checktex){
+		return list == null || (checktex && list.getTextureGroup() == null) ? textureSizeX : list.textureX;
+	}
+
+	public int ty(TurboList list, boolean checktex){
+		return list == null || (checktex && list.getTextureGroup() == null) ? textureSizeY : list.textureY;
+	}
 	
 	public static class GroupList extends ArrayList<TurboList> {
 		
@@ -620,11 +746,23 @@ public class GroupCompound {
 		public boolean add(TurboList list){
 			boolean bool = super.add(list);
 			if(bool){
-				Trees.polygon.addSub(list.button.update()); Trees.polygon.reOrderGroups();
-				Trees.fvtm.addSub(list.abutton.update()); Trees.fvtm.reOrderGroups();
+				Trees.polygon.addSub(list.button.update());
+				Trees.polygon.reOrderGroups();
+				Trees.fvtm.addSub(list.abutton.update());
+				Trees.fvtm.reOrderGroups();
 				Editors.general.refreshGroups();
 			}
 			return bool;
+		}
+		
+		@Override
+		public void add(int index, TurboList list){
+			super.add(index, list);
+			Trees.polygon.addSub(index, list.button.update());
+			Trees.polygon.reOrderGroups();
+			Trees.fvtm.addSub(index, list.abutton.update());
+			Trees.fvtm.reOrderGroups();
+			Editors.general.refreshGroups();
 		}
 		
 		public boolean contains(String str){
@@ -687,7 +825,9 @@ public class GroupCompound {
 				list.button = null; list.abutton = null;
 				list.pbutton = new SubTreeGroup(Trees.helper, list);
 				list.pbutton.setRoot(compound.button);
-			} compound.button.update(); Trees.polygon.reOrderGroups();
+			}
+			compound.button.update();
+			Trees.polygon.reOrderGroups();
 		}
 		
 	}
@@ -725,10 +865,10 @@ public class GroupCompound {
 				switch(obj.get("type").getAsString()){
 					case "simple-clipboard":{
 						boolean external = !obj.get("model").getAsString().equals(name);
-						String groupto = external ? obj.get("model").getAsString() + "|cb" : "clipboard";
+						String groupto = external ? obj.get("model").getAsString() + "-cb" : "clipboard";
 						DialogTask task = () -> {
 							obj.get("polygons").getAsJsonArray().forEach(elm -> {
-								this.add(JsonToTMT.parseWrapper(this, elm.getAsJsonObject()), groupto, false);
+								this.add(JsonToFMT.parseWrapper(this, elm.getAsJsonObject()), groupto, false);
 							});
 						};
 						if(external){
@@ -741,9 +881,246 @@ public class GroupCompound {
 				}
 			}
 			catch(UnsupportedFlavorException | IOException e){
-				e.printStackTrace();
+				log(e);
 			}
 		}
+	}
+
+	public void rectify(){
+		for(TurboList list : groups){
+			for(PolygonWrapper wrapper : list){
+				wrapper.pos.yCoord = -wrapper.pos.yCoord + 26;
+				if(wrapper instanceof BoxWrapper){
+					wrapper.off.yCoord = -wrapper.off.yCoord - ((BoxWrapper)wrapper).size.yCoord;
+				}
+				else if(wrapper instanceof CylinderWrapper){
+					CylinderWrapper cyl = (CylinderWrapper)wrapper;
+					if(cyl.direction > 3){
+						cyl.off.yCoord = -cyl.off.yCoord - cyl.length;
+						float base = cyl.base;
+						cyl.base = cyl.top;
+						cyl.top = base;
+					}
+					if(cyl.topoff != null){
+						cyl.topoff.yCoord = -cyl.topoff.yCoord;
+					}
+					if(cyl.toprot != null){
+						cyl.toprot.yCoord = -cyl.toprot.yCoord;
+						cyl.toprot.zCoord = -cyl.toprot.zCoord;
+					}
+				}
+				else{
+					wrapper.off.yCoord += -wrapper.off.yCoord;
+				}
+				wrapper.rot.xCoord = -wrapper.rot.xCoord;
+				wrapper.rot.zCoord = -wrapper.rot.zCoord;
+				if(wrapper.getType().isRectagular()){
+					BoxWrapper box = (BoxWrapper)wrapper;
+					if(box.getType().isShapebox()){
+						flipShapeboxes(Arrays.asList(new PolygonWrapper[]{ wrapper }), 1);
+					}
+				}
+				wrapper.recompile();
+			}
+		}
+	}
+
+	public void mirrorLRSelected(){
+		for(TurboList list : groups){
+			if(list.isEmpty()) continue;
+			for(PolygonWrapper wrapper : list){
+				if(!wrapper.selected && !list.selected) continue;
+				wrapper.pos.zCoord = -wrapper.pos.zCoord;
+				if(wrapper instanceof BoxWrapper){
+					BoxWrapper box = (BoxWrapper)wrapper;
+					if(box.off.zCoord != -box.size.zCoord / 2)
+						wrapper.off.zCoord -= ((BoxWrapper)wrapper).size.zCoord;
+				}
+				else if(wrapper instanceof CylinderWrapper){
+					//CylinderWrapper cyl = (CylinderWrapper)wrapper;
+					//
+				}
+				else{
+					//
+				}
+				wrapper.rot.yCoord = -wrapper.rot.yCoord;
+				if(wrapper.getType().isRectagular()){
+					BoxWrapper box = (BoxWrapper)wrapper;
+					if(box.getType().isShapebox()){
+						flipShapeboxes(Arrays.asList(new PolygonWrapper[]{ wrapper }), 0);
+					}
+				}
+				wrapper.recompile();
+			}
+		}
+	}
+
+	/**
+	 * For settings Helper Compounds "selected".
+	 * @param value the new status
+	 */
+	public void setGroupsSelected(boolean value){
+		for(TurboList list : groups) list.selected = value;
+	}
+
+	public ArrayList<String> getAuthors(){
+		return authors;
+	}
+
+	public void setAuthors(ArrayList<String> array){
+		creators.clear();
+		authors.clear();
+		for(String str : array){
+			boolean locked = str.startsWith("!");
+			if(locked) str = str.substring(1);
+			creators.put(str, locked);
+			authors.add(str);
+		}
+		ModelEditor.creators.refresh(creators);
+	}
+
+	public void addAuthor(String string, boolean additive, boolean lock){
+		if(authors.contains(string)) return;
+		if(additive){
+			if(!allowed()) return;
+		}
+		creators.put(string, lock);
+		authors.add(string);
+		ModelEditor.creators.refresh();
+	}
+
+	public void remAuthor(String string){
+		if(!allowed()) return;
+		creators.remove(string);
+		authors.remove(string);
+		ModelEditor.creators.refresh();
+	}
+	
+	private boolean allowed(){
+		boolean anylocked = false;
+		for(boolean bool : creators.values()){
+			if(bool){
+				anylocked = true;
+				break;
+			}
+		}
+		if(anylocked && (!creators.containsKey(SessionHandler.getUserName()) || !creators.get(SessionHandler.getUserName()))){
+			DialogBox.showOK(null, null, null, "editor.model_group.authors.error_locked");
+			return false;
+		}
+		return true;
+	}
+
+	public void lockAuthor(String author, boolean lock){
+		if(!allowed()) return;
+		creators.put(author, lock);
+		ModelEditor.creators.refresh();
+	}
+
+	public Map<String, Boolean> getCreators(){
+		return creators;
+	}
+	
+	public void rescale(){
+		int width = 350;
+		Dialog dialog = new Dialog(translate("compound.rescale.dialog"), width, 0);
+		int passed = 0;
+		TurboList[] selected = new TurboList[1];
+		float[] scale = new float[]{ 1f };
+		dialog.setResizable(false);
+		dialog.getContainer().add(new Label(translate("compound.rescale.scale"), 10, passed += 10, width - 20, 20));
+		NumberField input = new NumberField(10, passed += 24, width - 20, 20);
+		input.setup(0.001f, 16, true, () -> { scale[0] = input.getValue(); });
+		input.apply(scale[0]);
+		dialog.getContainer().add(input);
+		dialog.getContainer().add(new Label(translate("compound.rescale.group"), 10, passed += 28, width - 20, 20));
+		SelectBox<String> selectbox = new SelectBox<>(10, passed += 24, width - 20, 20);
+		selectbox.addElement("all-groups");
+		for(TurboList group : groups){
+			selectbox.addElement(group.id);
+		}
+		selectbox.addSelectBoxChangeSelectionEventListener(listener -> {
+			selected[0] = listener.getNewValue().equals("all-groups") ? null : groups.get(listener.getNewValue());
+		});
+		dialog.getContainer().add(selectbox);
+		Label label = null;
+		dialog.getContainer().add(label = new Label(translate("compound.rescale.warning0"), 10, passed += 28, width - 20, 20));
+		label.getStyle().setFont("roboto-bold");
+		dialog.getContainer().add(label = new Label(translate("compound.rescale.warning1"), 10, passed += 28, width - 20, 20));
+		label.getStyle().setFont("roboto-bold");
+		dialog.getContainer().add(label = new Label(translate("compound.rescale.warning2"), 10, passed += 28, width - 20, 20));
+		label.getStyle().setFont("roboto-bold");
+        Button button0 = new Button(translate("dialogbox.button.confirm"), 10, passed += 32, 100, 20);
+        button0.getListenerMap().addListener(MouseClickEvent.class, (MouseClickEventListener) e -> {
+        	if(CLICK == e.getAction()){
+        		rescale0(selected[0], scale[0]);
+        		dialog.close();
+        	}
+        });
+        dialog.getContainer().add(button0);
+        Button button1 = new Button(translate("dialogbox.button.cancel"), 120, passed, 100, 20);
+        button1.getListenerMap().addListener(MouseClickEvent.class, (MouseClickEventListener) e -> {
+        	if(CLICK == e.getAction()) dialog.close();
+        });
+        dialog.getContainer().add(button1);
+        dialog.setSize(width, passed + 48);
+		dialog.show(FMTB.frame);
+	}
+
+	public void rescale0(TurboList selected, float scale){
+		for(TurboList list : groups){
+			if(selected != null && selected != list) continue;
+			ArrayList<PolygonWrapper> boxes = (ArrayList<PolygonWrapper>)list.stream().filter(wrapper -> wrapper.getType() == ShapeType.BOX).collect(Collectors.toList());
+			list.removeAll(boxes);
+			boxes.forEach(box -> {
+				if(box.getType() == ShapeType.BOX){
+					list.add(box.convertTo(ShapeType.SHAPEBOX));
+				}
+			});
+			for(PolygonWrapper wrapper : list){
+				scalePoly(wrapper, scale);
+			}
+		}
+	}
+
+	public static void scalePoly(PolygonWrapper wrapper, float scale){
+		wrapper.pos = wrapper.pos.scale(scale);
+		wrapper.off = wrapper.off.scale(scale);
+		if(wrapper instanceof ShapeboxWrapper){
+			ShapeboxWrapper sb = (ShapeboxWrapper)wrapper;
+			sb.size = sb.size.scale(scale);
+			sb.cor0 = sb.cor0.scale(scale);
+			sb.cor1 = sb.cor1.scale(scale);
+			sb.cor2 = sb.cor2.scale(scale);
+			sb.cor3 = sb.cor3.scale(scale);
+			sb.cor4 = sb.cor4.scale(scale);
+			sb.cor5 = sb.cor5.scale(scale);
+			sb.cor6 = sb.cor6.scale(scale);
+			sb.cor7 = sb.cor7.scale(scale);
+		}
+		if(wrapper instanceof CylinderWrapper){
+			CylinderWrapper cyl = (CylinderWrapper)wrapper;
+			/*cyl.base *= scale;
+			cyl.top *= scale;
+			if(cyl.topoff != null && !cyl.topoff.isNull()){
+				cyl.topoff = cyl.topoff.scale(scale);
+			}
+			float newlen = cyl.length * scale;
+			int newlength = (int)newlen;
+			if(newlen % 1 > 0){
+				newlength += 1;
+				cyl.topoff = cyl.topoff.add(cyl.getTopOffForDir(newlen % 1));
+				cyl.pos = cyl.pos.add(cyl.getTopOffForDir(-(newlen % 1)));
+			}
+			cyl.length = newlength;*/
+			cyl.radius *= scale;
+			cyl.radius2 *= scale;
+			cyl.length *= scale;
+			if(cyl.topoff != null && !cyl.topoff.isNull()){
+				cyl.topoff = cyl.topoff.scale(scale);
+			}
+		}
+		wrapper.recompile();
 	}
 
 }

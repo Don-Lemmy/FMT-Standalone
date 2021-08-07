@@ -10,12 +10,14 @@ import net.fexcraft.app.fmt.FMTB;
 public class Trees {
 	
 	public static final ArrayList<TreeBase> trees = new ArrayList<>();
-	public static TreeBase polygon, helper, fvtm;
+	public static TreeBase polygon, helper, fvtm, textures;
 	
 	public static void initializeTrees(Frame frame){
 		frame.getContainer().add(polygon = new TreeBase("polygon"));
+		frame.getContainer().add(textures = new TreeBase("textures"));
 		frame.getContainer().add(helper = new TreeBase("helper"));
 		frame.getContainer().add(fvtm = new TreeBase("fvtm"));
+		for(TreeBase base : trees) base.addIcons();
 	}
 	
 	public static void hideAll(){
@@ -29,6 +31,8 @@ public class Trees {
 			case "helper": case "preview":
 			case "helper_preview": helper.show(); break;
 			case "fvtm": fvtm.show(); break;
+			case "textures": case "texture":
+			case "tex": textures.show(); break;
 			default: break;
 		}
 	}
@@ -53,7 +57,7 @@ public class Trees {
 		for(TreeBase tree : trees){
 			tree.setPosition(FMTB.WIDTH - 304, 30);
 			tree.setSize(tree.getSize().x, FMTB.HEIGHT - 30);
-			tree.scrollable.setSize(tree.scrollable.getSize().x, FMTB.HEIGHT - 60);
+			tree.scrollable.setSize(tree.scrollable.getSize().x, FMTB.HEIGHT - 90);
 			tree.reOrderGroups();
 		}
 	}

@@ -1,5 +1,7 @@
 package net.fexcraft.app.fmt.utils;
 
+import static net.fexcraft.app.fmt.utils.Logging.log;
+
 import java.awt.Desktop;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -22,7 +24,6 @@ import org.lwjgl.opengl.GL11;
 import net.fexcraft.app.fmt.FMTB;
 import net.fexcraft.app.fmt.ui.DialogBox;
 import net.fexcraft.lib.common.math.Time;
-import net.fexcraft.lib.common.utils.Print;
 
 /**
  * @author Ferdinand Calo' (FEX___96)
@@ -59,18 +60,22 @@ public class ImageHelper {
 			ImageIO.write(image, "png", file);
 			if(open){
         		try{
+    				if(System.getProperty("os.name").toLowerCase().contains("windows")){
+    					Runtime.getRuntime().exec( "rundll32 url.dll,FileProtocolHandler " + file.getAbsolutePath());
+		   			}
         			if(!Desktop.isDesktopSupported()){
-        				if(System.getProperty("os.name").toLowerCase().contains("windows")){
-        					 Runtime.getRuntime().exec( "rundll32 url.dll,FileProtocolHandler " + file.getAbsolutePath());
-        				}
-        				else DialogBox.showOK(null, null, null, "#desktop.api.notsupported");
+        				DialogBox.showOK(null, null, null, "#desktop.api.notsupported");
         			}
         			else Desktop.getDesktop().open(file);
         		}
-        		catch(Throwable e){ e.printStackTrace(); }
+        		catch(Throwable e){
+        			log(e);
+        		}
 			}
 		}
-		catch(IOException e){ e.printStackTrace(); }
+		catch(IOException e){
+			log(e);
+		}
 	}
 	
 	public static final void createGif(boolean loopgif){
@@ -101,8 +106,8 @@ public class ImageHelper {
 				gifwriter.prepareWriteSequence(null);
 			}
 			catch(Exception e){
-				e.printStackTrace();
-				Print.console("Failed to setup GIF creation, aborting operation.");
+				log(e);
+				log("Failed to setup GIF creation, aborting operation.");
 				reset();
 			}
 		}
@@ -110,26 +115,26 @@ public class ImageHelper {
 		if(stage >= 20 && stage < 56){ stage++;
 			try{ gifwriter.writeToSequence(new IIOImage(displayToImage(), null, meta), param); }
 			catch(IOException e){
-				Print.console("Failed to write next GIF sequence, aborting operation.");
-				reset(); e.printStackTrace();
+				log("Failed to write next GIF sequence, aborting operation.");
+				reset();
+				log(e);
 			}
 		}
 		else{
 			try{
 				gifwriter.endWriteSequence(); currgifout.close();
-			} catch(IOException e){ e.printStackTrace(); }
+			}
+			catch(IOException e){
+				log(e);
+			}
 			//
         	DialogBox.show(null, "dialogbox.button.ok", "dialogbox.button.open", null, () -> {
         		try{
-        			if(!Desktop.isDesktopSupported()){
-        				if(System.getProperty("os.name").toLowerCase().contains("windows")){
-        					 Runtime.getRuntime().exec( "rundll32 url.dll,FileProtocolHandler " + new File("./screenshots/").getAbsolutePath());
-        				}
-        				else DialogBox.showOK(null, null, null, "#desktop.api.notsupported");
-        			}
-        			else Desktop.getDesktop().open(new File("./screenshots/"));
+        			FMTB.openLink(new File("./screenshots/").getCanonicalPath());
         		}
-        		catch(Throwable e){ e.printStackTrace(); }
+        		catch(Throwable e){
+        			log(e);
+        		}
         	}, "image_helper.gif.done");
 			reset();
 		}
@@ -158,7 +163,7 @@ public class ImageHelper {
 
 	/** see http://wiki.lwjgl.org/wiki/Taking_Screen_Shots.html */
 	private static BufferedImage displayToImage(){
-		GL11.glReadBuffer(GL11.GL_FRONT);
+		//GL11.glReadBuffer(GL11.GL_FRONT);
 		int width = FMTB.WIDTH, height = FMTB.HEIGHT;
 		int bpp = 4; // Assuming a 32-bit display with a byte each for red, green, blue, and alpha.
 		ByteBuffer buffer = BufferUtils.createByteBuffer(width * height * bpp);

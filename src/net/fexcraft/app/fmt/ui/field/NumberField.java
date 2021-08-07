@@ -1,5 +1,7 @@
 package net.fexcraft.app.fmt.ui.field;
 
+import static net.fexcraft.app.fmt.utils.Logging.log;
+
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -16,16 +18,14 @@ import org.lwjgl.glfw.GLFW;
 
 import net.fexcraft.app.fmt.FMTB;
 import net.fexcraft.app.fmt.ui.UserInterfaceUtils;
-import net.fexcraft.app.fmt.utils.Settings.Setting;
+import net.fexcraft.app.fmt.utils.Setting;
+import net.fexcraft.app.fmt.utils.Settings;
 
 public class NumberField extends TextInput implements Field {
 	
-	public static final NumberFormat nf = NumberFormat.getInstance(Locale.US);
-	public static final DecimalFormat df = new DecimalFormat("#.####", new DecimalFormatSymbols(Locale.US));
-	static {
-		nf.setMaximumFractionDigits(4);
-		df.setRoundingMode(RoundingMode.HALF_EVEN);
-	}
+	private static NumberFormat nf;
+	private static DecimalFormat df;
+	static { updateRoundingDigits(); }
 
 	public NumberField(int x, int y, int w, int h){
 		super("0", x, y, w, h); getStyle().setFontSize(20f); UserInterfaceUtils.setupHoverCheck(this);
@@ -47,7 +47,6 @@ public class NumberField extends TextInput implements Field {
 	private Float value = null;
 	private Runnable update;
 	
-	@SuppressWarnings("unchecked")
 	public NumberField setup(String id, float min, float max, boolean flaot){
 		floatfield = flaot; this.min = min; this.max = max; fieldid = id;
 		addTextInputContentChangeEventListener(event -> {
@@ -62,7 +61,6 @@ public class NumberField extends TextInput implements Field {
 		return this;
 	}
 	
-	@SuppressWarnings("unchecked")
 	public NumberField setup(float min, float max, boolean flaot, Runnable update){
 		floatfield = flaot; this.min = min; this.max = max; this.update = update;
 		addTextInputContentChangeEventListener(event -> {
@@ -84,7 +82,10 @@ public class NumberField extends TextInput implements Field {
 		try{
 			newval = floatfield ? nf.parse(text).floatValue() : nf.parse(text).intValue();
 			//newval = floatfield ? Float.parseFloat(text) : Integer.parseInt(text);
-		} catch(Exception e){ e.printStackTrace(); }
+		}
+		catch(Exception e){
+			log(e);
+		}
 		if(newval > max) newval = max; else if(newval < min) newval = min;
 		if(!(newval + "").equals(text)) apply(newval);
 		return value = newval;
@@ -98,7 +99,7 @@ public class NumberField extends TextInput implements Field {
 			return floatfield ? num.floatValue() : num.intValue();
 		}
 		catch(ParseException e){
-			e.printStackTrace();
+			log(e);
 			return flat;
 		}
 	}
@@ -110,7 +111,7 @@ public class NumberField extends TextInput implements Field {
 
 	@Override
 	public void onScroll(double yoffset){
-		apply(tryAdd(getValue(), yoffset > 0, FMTB.MODEL.rate)); //Print.console(value);
+		apply(tryAdd(getValue(), yoffset > 0, FMTB.MODEL.rate)); //log(value);
 		if(fieldid != null) FMTB.MODEL.updateValue(this, fieldid, yoffset > 0); if(update != null) update.run();
 	}
 
@@ -122,6 +123,22 @@ public class NumberField extends TextInput implements Field {
 	@Override
 	public Runnable update(){
 		return update;
+	}
+
+	public static void updateRoundingDigits(){
+		nf = NumberFormat.getInstance(Locale.US);
+		nf.setMaximumFractionDigits(Settings.SETTINGS.get("rounding_digits").getValue());
+		String str = "#.";
+		for(int i = 0; i < nf.getMaximumFractionDigits(); i++){
+			str += "#";
+		}
+		df = new DecimalFormat(str, new DecimalFormatSymbols(Locale.US));
+		df.setRoundingMode(RoundingMode.HALF_EVEN);
+	}
+	
+	public NumberField setAsFloatField(boolean bool){
+		this.floatfield = bool;
+		return this;
 	}
 	
 }

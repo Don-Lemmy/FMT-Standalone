@@ -1,6 +1,3 @@
-# PLEASE NOTE
-_This description is still for v2, will be updated once v3 is out._
-
 # Fex's Modelling Toolbox
 A Tool to create Models basing on the "TMT" (updated and maintained version of Fex/FCL) Library.
 
@@ -69,13 +66,9 @@ FCL is licensed under http://fexcraft.net/license?id=mods (till/if it's respecti
 - Windows / Linux     
   Take the zip file from https://github.com/Fexcraft/FMT-Standalone/releases    
   And unpack it into an own folder, done. Now just run the FMT jar file.    
+  **Java 8 is required.** Reported to not run on newer java yet.    
 - Mac     
   Check out TurboDefender's instructions [here](https://gist.github.com/RishiMenon2004/4343dc7debbd44379a8f43e930bd3218)!
-
-### Java Version (important)
-FMT was compiled under Java 8, in some cases people reported FMT not working on Java 9+.    
-Please try running first under Java 8 if you have it installed.
-Otherwise try Java 15+, recently it was reported that FMT works again under Java 15+.
 
 ## Discord
 https://discord.gg/AkMAzaA

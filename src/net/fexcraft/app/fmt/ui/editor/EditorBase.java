@@ -2,6 +2,7 @@ package net.fexcraft.app.fmt.ui.editor;
 
 import java.util.ArrayList;
 
+import org.joml.Vector4f;
 import org.liquidengine.legui.component.Component;
 import org.liquidengine.legui.component.Label;
 import org.liquidengine.legui.component.Panel;
@@ -22,13 +23,15 @@ public class EditorBase extends Panel {
 
 	protected ArrayList<EditorWidget> widgets = new ArrayList<>();
 	protected ScrollablePanel scrollable;
+	public Label current;
 	
 	public EditorBase(){
 		super(0, 30, 304, FMTB.HEIGHT - 30); Editors.editors.add(this);
 		String[] arr = new String[]{ "normal", "sixteenth", "decimal"}; int off = 0;
 		Label label = new Label(translate("editor.multiplicator"), 4, 4, 100, 24);
 		super.add(label); label.getStyle().setFontSize(20f); int am = 0;
-		Label current = new Label(format("editor.multiplicator.current", 1f), 4, 28, 100, 24);
+		current = new Label(format("editor.multiplicator.current", 1f), 4, 28, 100, 24);
+		current.getHoveredStyle().getBackground().setColor(new Vector4f(0.8f, 0.8f, 0.2f, 0.2f));
 		super.add(current); current.getStyle().setFontSize(20f);
 		for(String string : arr){
 			Slider multislider = new Slider(148, 4 + off, 150, 14);
@@ -96,6 +99,11 @@ public class EditorBase extends Panel {
 		if(com instanceof EditorWidget) widgets.add((EditorWidget)com);
 		return scrollable.getContainer().add(com);
 	}
+	
+	public boolean remSub(Component com){
+		if(com instanceof EditorWidget) widgets.remove((EditorWidget)com);
+		return scrollable.getContainer().remove(com);
+	}
 
 	protected void reOrderWidgets(){
 		float size = 0; for(EditorWidget widget : widgets) size += widget.getSize().y + 2;
@@ -107,17 +115,27 @@ public class EditorBase extends Panel {
 		
 	    @Override
 	    public void process(@SuppressWarnings("rawtypes") ScrollEvent event){
-	    	if(FMTB.field_scrolled) return; else super.process(event);
+	    	if(FMTB.field_scrolled || FMTB.frame.getLayers().size() > 0) return; else super.process(event);
 	    }
 	    
 	}
 	
 	public static String translate(String str){
-		return Translator.translate(str);//, "no.lang");
+		return Translator.translate(str);
 	}
 	
 	public static String format(String str, Object... objs){
 		return Translator.format(str, objs);
+	}
+
+	public void modifyCurrent(double yoffset){
+		float rate = FMTB.MODEL.rate;
+		if(yoffset < 0) rate /= 2;
+		if(yoffset > 0) rate *= 2;
+		if(rate > 64) rate = 64;
+		if(rate < 0.001f) rate = 0.001f;
+		current.getTextState().setText(format("editor.multiplicator.current", rate));
+        FMTB.MODEL.rate = rate;
 	}
 	
 }

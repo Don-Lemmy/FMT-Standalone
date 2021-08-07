@@ -9,15 +9,19 @@ import net.fexcraft.app.fmt.FMTB;
 public class Editors {
 	
 	public static GeneralEditor general;
-	public static ModelGroupEditor modelgroup;
+	public static GroupEditor group;
+	public static ModelEditor model;
 	public static PreviewEditor preview;
 	public static TextureEditor texture;
+	public static UVEditor uv;
 	//
 	public static final ArrayList<EditorBase> editors = new ArrayList<>();
 
 	public static void initializeEditors(Frame frame){
 		frame.getContainer().add(general = new GeneralEditor());
-		frame.getContainer().add(modelgroup = new ModelGroupEditor());
+		frame.getContainer().add(group = new GroupEditor());
+		frame.getContainer().add(model = new ModelEditor());
+		frame.getContainer().add(uv = new UVEditor());
 		frame.getContainer().add(texture = new TextureEditor());
 		frame.getContainer().add(preview = new PreviewEditor());
 	}
@@ -28,10 +32,12 @@ public class Editors {
 	
 	public static void show(String type){
 		hideAll();
+		TextureEditor.toggleBucketMode(null);
 		switch(type){
 			case "general": general.show(); break;
-			case "model": case "group":
-			case "modelgroup": modelgroup.show(); break;
+			case "group": group.show(); break;
+			case "model": model.show(); break;
+			case "uv": case "texpos": uv.show(); break;
 			case "helper": case "preview":
 			case "helperpreview": preview.show(); break;
 			case "texture": texture.show(); break;
@@ -65,6 +71,15 @@ public class Editors {
 			editor.scrollable.setSize(editor.scrollable.getSize().x, FMTB.HEIGHT - 80);
 			editor.reOrderWidgets();
 		}
+	}
+
+	public static boolean anyCurrentHovered(){
+		for(EditorBase editor : editors){
+			if(editor.isVisible() && editor.current.isHovered()){
+				return true;
+			}
+		}
+		return false;
 	}
 
 }

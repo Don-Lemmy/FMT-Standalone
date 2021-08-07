@@ -1,7 +1,5 @@
 package net.fexcraft.app.fmt.demo;
 
-import net.fexcraft.app.fmt.utils.MRTRenderer;
-import net.fexcraft.app.fmt.utils.MRTRenderer.DrawMode;
 import net.fexcraft.lib.common.Static;
 import net.fexcraft.lib.common.math.RGB;
 import net.fexcraft.lib.tmt.ModelBase;
@@ -1213,7 +1211,7 @@ public class ModelT1P extends ModelBase {
 
         translate(0F, 0F, 0F);
         //
-        for(ModelRendererTurbo turbo : body) turbo/*.setLines(RGB.BLUE)*/.setTextured(true);
+        for(ModelRendererTurbo turbo : body) turbo.textured = true;
         for(ModelRendererTurbo turbo : body_door_close_colored_primary) turbo.textured = true;
         for(ModelRendererTurbo turbo : body_colored_primary) turbo.textured = true;
         for(ModelRendererTurbo turbo : body_colored_secondary) turbo.textured = true;
@@ -1223,19 +1221,19 @@ public class ModelT1P extends ModelBase {
     
     @Override
     public void render(){
-        /*for(ModelRendererTurbo turbo : body){
-        	turbo.rotationAngleY += 1f / 30f;
-        }*/
-    	MRTRenderer.mode(DrawMode.LINES);
     	render(body);
+    	COLOR.glColorApply();
     	render(body_door_close_colored_primary);
     	render(body_colored_primary);
+    	RGB.glColorReset();
+    	//
+    	RGB.GREEN.glColorApply();
     	render(body_colored_secondary);
-    	MRTRenderer.mode(DrawMode.TEXTURED);
-    	render(body);
-    	render(body_door_close_colored_primary);
-    	render(body_colored_primary);
-    	render(body_colored_secondary);
+    	RGB.glColorReset();
+    	/*if(bodyLines == null){
+    		bodyLines = new ModelCompound(body);
+    		bodyLines.lines = true;
+    	} bodyLines.render();*/
     }
 
 	public void render(ModelRendererTurbo[] model){

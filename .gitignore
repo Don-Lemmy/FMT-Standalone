@@ -14,7 +14,6 @@ src/net/fexcraft/app/other/
 !libs/*
 libs/natives
 lib
-fmt_old/
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
@@ -81,7 +80,3 @@ FMT.xml
 libs/pom.xml
 FMT.bat
 MANIFEST.MF
-catalog.fmt
-build/
-upload/
-launch.fmt

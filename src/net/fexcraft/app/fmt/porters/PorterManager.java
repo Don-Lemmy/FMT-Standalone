@@ -1,9 +1,7 @@
-/**
- * 
- */
 package net.fexcraft.app.fmt.porters;
 
-import java.awt.Desktop;
+import static net.fexcraft.app.fmt.utils.Logging.log;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,8 +12,9 @@ import java.util.stream.Collectors;
 import net.fexcraft.app.fmt.FMTB;
 import net.fexcraft.app.fmt.ui.DialogBox;
 import net.fexcraft.app.fmt.ui.FileSelector;
-import net.fexcraft.app.fmt.utils.Settings.Setting;
+import net.fexcraft.app.fmt.utils.Setting;
 import net.fexcraft.app.fmt.utils.Translator;
+import net.fexcraft.app.fmt.utils.texture.TextureManager;
 import net.fexcraft.app.fmt.wrappers.GroupCompound;
 import net.fexcraft.app.fmt.wrappers.TurboList;
 
@@ -33,11 +32,16 @@ public class PorterManager {
 		porters.add(new OBJPreviewImporter());
 		porters.add(new JTMTPorter());
 		porters.add(new PNGExporter());
-		porters.add(new OBJPrototypeExporter());
+		porters.add(new OBJExporter());
 		porters.add(new MarkerExporter());
 		porters.add(new TiMExporter());
 		porters.add(new TSIVMarkerExporter());
 		porters.add(new DFMExporter());
+		porters.add(new DFMImporter());
+		porters.add(new TCNEXImporter());
+		porters.add(new TCHImporter());
+		porters.add(new AABBExporter());
+		porters.add(new VoxImporter());
 	}
 
 	public static void handleImport(){
@@ -47,11 +51,12 @@ public class PorterManager {
 					DialogBox.showOK("eximporter.import.nofile", null, null, "eximporter.import.nofile.desc");
 					return;
 				}
+				TextureManager.clearGroups();
 				GroupCompound compound = porter.importModel(file, settings);
 				if(settings.containsKey("integrate") && settings.get("integrate").getBooleanValue()){
-					for(String creator : compound.creators){
-						if(!FMTB.MODEL.creators.contains(creator)){
-							FMTB.MODEL.creators.add(creator);
+					for(String creator : compound.getAuthors()){
+						if(!FMTB.MODEL.getAuthors().contains(creator)){
+							FMTB.MODEL.addAuthor(creator, false, true);
 						}
 					}
 					for(TurboList list : compound.getGroups()){
@@ -62,12 +67,13 @@ public class PorterManager {
 						FMTB.MODEL.getGroups().add(list);
 					}
 				}
-				else FMTB.setModel(compound, true);
+				else FMTB.setModel(compound, true, false);
 				FMTB.MODEL.updateFields(); FMTB.MODEL.recompile();
 			}
 			catch(Exception e){
 				DialogBox.showOK(null, null, null, "eximporter.import.failed", "#" + e.getLocalizedMessage());
-				e.printStackTrace(); return;
+				log(e);
+				return;
 			}
 			DialogBox.showOK(null, null, null, "eximporter.import.success");
 		});
@@ -82,16 +88,11 @@ public class PorterManager {
 				}
 				String result = porter.exportModel(FMTB.MODEL, file, settings);
 				DialogBox.showOK(null, null, null, "eximporter.export.success", "#" + result);
-				try{
-					Desktop.getDesktop().open(file.getParentFile());
-				}
-				catch(Exception e){
-					e.printStackTrace();
-				}
+				FMTB.openLink(file.getParentFile().getPath());
 			}
 			catch(Exception e){
 				DialogBox.showOK(null, null, null, "eximporter.export.failed", "#" + e.getLocalizedMessage());
-				e.printStackTrace(); //TODO add "open console" as 2nd button
+				log(e);//TODO add "open console" as 2nd button
 			}
 		});
 	}
@@ -103,8 +104,8 @@ public class PorterManager {
 	public static ExImPorter getPorterFor(File file, boolean export){
 		for(ExImPorter porter : porters){
 			if((export && porter.isExporter()) || (!export && porter.isImporter())){
-				for(String ext : porter.getExtensions()){
-					if(file.getName().endsWith(ext)) return porter;
+				for(int i = 1; i < porter.getExtensions().length; i++){
+					if(file.getName().endsWith(porter.getExtensions()[i].replace("*", ""))) return porter;
 				}
 			}
 		}
