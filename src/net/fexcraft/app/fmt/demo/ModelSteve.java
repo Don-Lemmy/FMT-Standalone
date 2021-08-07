@@ -1,51 +1,50 @@
 package net.fexcraft.app.fmt.demo;
 
-import org.lwjgl.opengl.GL11;
-
-import net.fexcraft.lib.local_tmt.ModelRendererTurbo;
+import net.fexcraft.app.fmt.polygon.Marker;
+import net.fexcraft.app.fmt.utils.MRTRenderer.GlCache;
+import net.fexcraft.lib.common.math.TexturedPolygon;
+import net.fexcraft.lib.common.math.TexturedVertex;
+import net.fexcraft.lib.tmt.ModelRendererTurbo;
 
 public class ModelSteve {
 	
-	private static ModelRendererTurbo[] group0;
-	static{
-		group0 = new ModelRendererTurbo[8]; int textureX = 64, textureY = 64;
-		group0[0] = new ModelRendererTurbo(null, 32, 0, textureX, textureY);
-		group0[0].addShapeBox(-4F, -8F, -4F, 8, 8, 8, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F);
-		group0[0].setRotationPoint(0F, -14F, 0F);
-		group0[1] = new ModelRendererTurbo(null, 40, 16, textureX, textureY);
-		group0[1].addShapeBox(-3F, -2F, -2F, 4, 12, 4, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F);
-		group0[1].setRotationPoint(-5F, -12F, 0F);
-		group0[1].rotationAngleX = -35F;
-		group0[2] = new ModelRendererTurbo(null, 0, 16, textureX, textureY);
-		group0[2].addShapeBox(-2F, 0F, -2F, 4, 12, 4, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F);
-		group0[2].setRotationPoint(1.9F, -2F, 0F);
-		group0[2].rotationAngleX = -75F;
-		group0[2].rotationAngleY = -15F;
-		group0[3] = new ModelRendererTurbo(null, 0, 0, textureX, textureY);
-		group0[3].addShapeBox(-4F, -8F, -4F, 8, 8, 8, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F);
-		group0[3].setRotationPoint(0F, -14F, 0F);
-		group0[4] = new ModelRendererTurbo(null, 16, 16, textureX, textureY);
-		group0[4].addShapeBox(-4F, 0F, -2F, 8, 12, 4, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F);
-		group0[4].setRotationPoint(0F, -14F, 0F);
-		group0[5] = new ModelRendererTurbo(null, 40, 16, textureX, textureY);
-		group0[5].addShapeBox(0F, -2F, -2F, 4, 12, 4, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F);
-		group0[5].setRotationPoint(4F, -12F, 0F);
-		group0[5].rotationAngleX = -35F;
-		group0[6] = new ModelRendererTurbo(null, 0, 16, textureX, textureY);
-		group0[6].addShapeBox(-2F, 0F, -2F, 4, 12, 4, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F);
-		group0[6].setRotationPoint(-1.9F, -2F, 0F);
-		group0[6].rotationAngleX = -75F;
-		group0[6].rotationAngleY = 15F;
-		group0[7] = new ModelRendererTurbo(null, 24, 0, textureX, textureY);
-		group0[7].addShapeBox(-3F, -6F, -1F, 6, 6, 1, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F, 0F);
-		group0[7].setRotationPoint(0F, -14F, 0F);
+	private ModelRendererTurbo[] marker = new ModelRendererTurbo[6];
+	private static float shrink = 1.875f * 0.5f;
+	
+	public void fill(Marker mark){
+		if(marker[0] == null){
+			for(int i = 0; i < marker.length; i++) marker[i] = new ModelRendererTurbo(this, 4, 4, 64, 64);
+		}
+		for(int i = 0; i < marker.length; i++){
+			marker[i].forcedRecompile = true;
+			marker[i].clear();
+			marker[i].rotationAngleY = 0;
+			marker[i].setRotationPoint(0, 0, 0);
+		}
+		float s = mark.biped_scale * shrink;
+		marker[0].addBox(-4,   -12,    -2, 8, 12, 4).setTextureOffset(16, 16);
+		marker[1].addBox(-4,     0,    -4, 8,  8, 8).setTextureOffset( 0,  0).setRotationPoint(0, -20 * s, 0).setRotationAngle(0, 0, 0);
+		marker[2].addBox( 4, -0.4f, -0.9f, 4, 12, 4).setTextureOffset(32, 48).setRotationPoint(0, -12 * s, 0).setRotationAngle(-35, 0, 0);
+		marker[3].addBox(-8, -0.4f, -0.9f, 4, 12, 4).setTextureOffset(40, 16).setRotationPoint(0, -12 * s, 0).setRotationAngle(-35, 0, 0);
+		marker[4].addBox(-4,     0,    -4, 4, 12, 4).setTextureOffset( 0, 16).setRotationPoint(0, 2 * s, 0).setRotationAngle(-83, 14.5f, 0);
+		marker[5].addBox( 0,     0,    -4, 4, 12, 4).setTextureOffset(16, 48).setRotationPoint(0, 2 * s, 0).setRotationAngle(-83, -14.5f, 0);
+		for(ModelRendererTurbo turbo : marker){
+			if(turbo.glObject() == null) turbo.glObject(new GlCache());
+			turbo.setTextured(true);
+			for(TexturedPolygon poly : turbo.getFaces()){
+				for(TexturedVertex vert : poly.getVertices()){
+					vert.vector = vert.vector.scale(s);
+				}
+			}
+			turbo.rotationPointX += mark.pos.x;
+			turbo.rotationPointY += mark.pos.y;
+			turbo.rotationPointZ += mark.pos.z;
+			turbo.rotationAngleY += mark.angle;
+		}
 	}
 
-	public static void render(float rot){
-		GL11.glPushMatrix();
-		GL11.glRotatef(rot, 0, 1, 0);
-		for(ModelRendererTurbo turbo : group0) turbo.render();
-		GL11.glPopMatrix();
+	public void render(){
+		for(ModelRendererTurbo turbo : marker) turbo.render();
 	}
 
 }

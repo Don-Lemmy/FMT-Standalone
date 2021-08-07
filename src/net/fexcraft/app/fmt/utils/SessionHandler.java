@@ -1,121 +1,190 @@
 package net.fexcraft.app.fmt.utils;
 
+import static net.fexcraft.app.fmt.utils.Logging.log;
+import static net.fexcraft.app.json.JsonHandler.parseURLwithCookies;
+
 import java.io.File;
+import java.util.Base64;
+import java.util.function.Consumer;
 
-import com.google.gson.JsonObject;
-
-import net.fexcraft.lib.common.json.JsonUtil;
-import net.fexcraft.lib.common.utils.HttpUtil;
-import net.fexcraft.lib.common.utils.Print;
+import net.fexcraft.app.fmt.FMT;
+import net.fexcraft.app.json.JsonHandler;
+import net.fexcraft.app.json.JsonMap;
 
 public class SessionHandler {
-	
-	private static boolean loggedin, encrypted;
-	private static String sessionid, hashpw, usermail, username;
-	private static int userid;
-	
+
+	private static boolean loggedin, encrypt;
+	private static String sessionid, pass, usermail, username, userid;
+	private static String perm = "free", permname = "Public Version";
+	private static String defusername = "Unregistered Account";
+	private static String defperm = perm, defpermname = permname;
+
 	public static void load(){
-		Print.console("Loading auth data from FILE.");
+		log("Loading auth data from FILE.");
 		File file = new File("./auth.net");
-		JsonObject obj = JsonUtil.get(file);
-		sessionid = obj.has("session") ? obj.get("session").getAsString() : null;
-		encrypted = JsonUtil.getIfExists(obj, "encrypted", false);
-		hashpw = JsonUtil.getIfExists(obj, "hashpw", "testuser");
-		usermail = JsonUtil.getIfExists(obj, "mail", "testuser@fexcraft.net");
-		userid = JsonUtil.getIfExists(obj, "userid", -1).intValue();
-		username = JsonUtil.getIfExists(obj, "username", "Test-User-Access");
-		if(!file.exists()) JsonUtil.write(file, obj);
+		JsonMap map = JsonHandler.parse(file);
+		sessionid = map.getString("session", null);
+		encrypt = map.getBoolean("encrypt", false);
+		pass = map.getString("pass", "testuser");
+		usermail = map.getString("mail", "testuser@fexcraft.net");
+		userid = map.getString("userid", "-1");
+		username = map.getString("username", defusername);
+		if(!file.exists()) JsonHandler.print(file, map, true, false);
 	}
 
 	public static void save(){
-		Print.console("Saving auth data to FILE.");
-		JsonObject obj = new JsonObject();
-		if(sessionid != null) obj.addProperty("session", sessionid);
-		obj.addProperty("encrypted", encrypted);
-		if(hashpw != null) obj.addProperty("hashpw", hashpw);
-		if(usermail != null) obj.addProperty("mail", usermail);
-		if(userid >= 0) obj.addProperty("userid", userid);
-		if(username != null) obj.addProperty("username", username);
-		JsonUtil.write(new File("./auth.net"), obj);
+		log("Saving auth data to FILE.");
+		JsonMap map = new JsonMap();
+		if(sessionid != null) map.add("session", sessionid);
+		map.add("encrypt", encrypt);
+		if(pass != null) map.add("pass", pass);
+		if(usermail != null) map.add("mail", usermail);
+		if(userid != null) map.add("userid", userid);
+		if(username != null) map.add("username", username);
+		if(perm != null) map.add("perm", perm);
+		if(permname != null) map.add("perm-name", permname);
+		JsonHandler.print(new File("./auth.net"), map, true, false);
 	}
-	
+
 	public static void checkIfLoggedIn(boolean retry, boolean first){
-		Print.console("Checking login status."); if(first) load();
-		JsonObject obj = HttpUtil.request("http://fexcraft.net/session/api.jsp", "r=status&nossl", getCookieArr());
-		if(obj != null && obj.has("success")){
-			//Print.console(obj.toString());
-			loggedin = obj.has("guest") && !obj.get("guest").getAsBoolean();
-			userid = JsonUtil.getIfExists(obj, "user", -1).intValue();
-			if(obj.has("banned") && obj.get("banned").getAsBoolean()){
-				Print.console("Banned account detected, causing a commotion.");
+		log("Verifying session/login data...");
+		if(first) load();
+		JsonMap map = parseURLwithCookies("https://fexcraft.net/session/api", "r=status", getCookieArr());
+		if(map != null && map.has("success")){
+			loggedin = !map.getBoolean("guest", true);
+			userid = map.getString("user", "-1");
+			if(map.getBoolean("banned", false)){
+				log("Banned account detected, exiting.");
 				System.exit(-1); System.exit(1); System.exit(1);
-				//Bottombar.updateLoginState("BAN-N-NED");
 			}
 		}
 		if(loggedin){
-			Print.console("Fetching Username...");
-			obj = HttpUtil.request("http://fexcraft.net/session/api.jsp", "r=username&nossl&id=" + userid, getCookieArr());
-			if(obj.has("name")) username = obj.get("name").getAsString();
-			Print.console("Username updated to: " + username);
-			//Bottombar.updateLoginState(Translator.format("bottombar.netfield.loggedin", "Logged In - %s", username));
+			log("Fetching Username...");
+			map = parseURLwithCookies("https://fexcraft.net/session/api", "r=username&id=" + userid, getCookieArr());
+			if(map.has("name")) username = map.getString("name", defusername);
+			log("Username updated to: " + username);
+			if(first) log(">>>> Welcome back! <<<<");
+			map = parseURLwithCookies("https://fexcraft.net/session/api", "r=fmt_status", getCookieArr());
+			if(map != null && map.has("license") && map.has("license_title")){
+				perm = map.getString("license", defperm);
+				permname = map.getString("license_title", defpermname);
+				log("License updated to: " + permname + " (" + perm + ")");
+			}
 		}
 		else if(retry){
-			if(!first) load(); Print.console("Trying to re-login...");
-			if(tryLogin(/*false*/)){ checkIfLoggedIn(false, false); }
+			if(!first) load();
+			log("Attempting to re-login...");
+			sessionid = null;
+			tryLogin(null);
 			if(!loggedin){
-				Print.console("Relogin seems to have failed.");
-				userid = -1; username = "Guest";
-				//Bottombar.updateLoginState(Translator.translate("bottombar.netfield.login_failed", "Login Failed - GUEST"));
+				log("Relogin seems to have failed.");
+				userid = "-1";
+				username = "Guest";
 			}
 		}
-		else{
-			//Bottombar.updateLoginState(Translator.translate("bottombar.netfield.loggedout", "Logged Out - GUEST"));
-		}
 	}
-	
+
 	private static String[] getCookieArr(){
-		return sessionid == null ? null : new String[]{ "JSESSIONID=" + sessionid };
+		return sessionid == null ? null : new String[] { "PHPSESSID=" + sessionid };
 	}
-	
-	public static boolean tryLogin(/*boolean show*/){
+
+	public static String tryLogin(Consumer<String> cons){
+		String response;
 		try{
-			//TODO http :: find solution with the certs javax can't process
-			JsonObject obj = HttpUtil.request("http://fexcraft.net/session/api.jsp", "r=login&m=" + usermail + "&p=" + hashpw + "&nossl" + (encrypted ? "&encrypted" : ""), getCookieArr());
-			if(obj == null){ Print.console("Invalid/Empty login response, aborting."); return false; }
-			if(obj.has("cookies") && obj.get("cookies").getAsJsonObject().has("JSESSIONID")){
-				sessionid = obj.get("cookies").getAsJsonObject().get("JSESSIONID").getAsString();
-				Print.console("Updated Session ID to: " + sessionid);
+			JsonMap map = parseURLwithCookies("https://fexcraft.net/session/api", "r=login&m=" + usermail + "&p=" + decrypt(), getCookieArr());
+			if(map == null){
+				log(response = "Invalid/Empty login response, aborting.");
+				return response;
 			}
-			loggedin = obj.has("success") && obj.get("success").getAsBoolean();
-			/*if(show){
-				FMTB.showDialogbox((loggedin ? "Logged in!" : obj.has("status") ? obj.get("status").getAsString() : "No Status MSG.") + 
-					"api:success=" + loggedin, "ok!", "retry", DialogBox.NOTHING, () -> {
-						SessionHandler.checkIfLoggedIn(true, false);
-					}
-				);
-			}*/
-			//else{ Print.console(obj.toString()); }
-			return true;
+			if(map.getMap("cookies").has("PHPSESSID")){
+				sessionid = map.getMap("cookies").get("PHPSESSID").string_value();
+				log("Updated Session ID to: " + sessionid);
+			}
+			loggedin = map.getBoolean("success", false);
+			response = map.getString("status", "api:success=" + loggedin);
+			log("Login Response: " + response);
+			checkIfLoggedIn(false, false);
 		}
 		catch(Exception e){
-			e.printStackTrace(); return loggedin = false;
+			response = "Error: " + e.getMessage();
+			log(e);
+			loggedin = false;
 		}
+		if(cons != null) cons.accept(response);
+		return response;
 	}
-	
+
 	public static void tryLogout(){
-		//TODO add logout dialog
+		JsonMap map = parseURLwithCookies("https://fexcraft.net/session/api", "r=logout", getCookieArr());
+		log("Logout Response: " + map.toString());
+		username = userid = "";
+		pass = perm = permname = null;
+		save();
 	}
-	
+
 	public static boolean isLoggedIn(){
 		return loggedin;
 	}
 
-	public static int getUserId(){
+	public static String getUserId(){
 		return userid;
 	}
 
 	public static String getUserName(){
 		return username;
+	}
+
+	public static String getUserMail(){
+		return usermail;
+	}
+
+	public static String getLicenseStatus(){
+		return perm;
+	}
+
+	public static String getLicenseName(){
+		return permname;
+	}
+
+	public static String getLicenseTitle(){
+		return permname + " (" + perm + ")";
+	}
+
+	public static String getPassWord(){
+		return pass;
+	}
+
+	public static boolean shouldEncrypt(){
+		return encrypt;
+	}
+
+	public static void openRegister(){
+		FMT.openLink("https://fexcraft.net/register");
+	}
+
+	public static boolean toggleEncrypt(){
+		return encrypt = !encrypt;
+	}
+
+	public static void updatePassword(String newValue){
+		pass = newValue;
+	}
+
+	public static void updateUserMail(String newValue){
+		usermail = newValue;
+	}
+
+	public static void encrypt(){
+		if(!shouldEncrypt()) return;
+		pass = Base64.getEncoder().encodeToString(pass.getBytes());
+		log("Applied client side base encryption to password.");
+	}
+
+	// generic code based on stackoverflow, as long it's not plain readable that's fine
+
+	public static String decrypt(){
+		if(!shouldEncrypt()) return pass;
+		return new String(Base64.getDecoder().decode(pass));
 	}
 
 }

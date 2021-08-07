@@ -1,58 +1,102 @@
 package net.fexcraft.app.fmt.utils;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Scanner;
-import java.util.TreeMap;
 
-import net.fexcraft.lib.common.utils.Print;
+import net.fexcraft.app.fmt.settings.Settings;
 
 public class Translator {
 	
-	private static TreeMap<String, String> DEF = new TreeMap<>(), SEL = new TreeMap<>();
-	private static final File ROOT_FILE = new File("./resources/lang/default.lang");
+	public static final Map<String, String> DEFAULT = new HashMap<>();
+	public static final Map<String, String> SELECTED = new HashMap<>();
+	public static String UNNAMED_POLYGON;
 	
-	public static final void init() throws FileNotFoundException {
-		Scanner scanner = new Scanner(ROOT_FILE, "UTF-8");
-		while(scanner.hasNextLine()){
-			String string = scanner.nextLine();
-			if(string.length() < 3 || string.startsWith("#") || string.startsWith("//")) continue;
-			String[] str = string.split("="); if(str.length < 2) continue; DEF.put(str[0], str[1]);
-		} scanner.close();
-		if(Settings.getLanguage().equals("default")){ Print.console("Langauge is set to default, skipping translation parsing."); return; }
-		File file = new File("./resources/lang/" + Settings.getLanguage() + ".lang");
-		if(!file.exists()){ Print.console("Tried to find lang file as specified in settings, but the file seems to be missing."); return; }
+	public static void init(){
+		if(loadLang(DEFAULT, new File("./resources/lang/default.lang"))){
+			Logging.log("Loaded default translation.");
+		}
+		String local = Locale.getDefault().toString().toLowerCase();
+		File lang = null;
+		String source = null;
+		if(Settings.LANGUAGE.value.equals("null")){
+			if(!(lang = new File("./resources/lang/" + local + ".lang")).exists()){
+				Logging.log("Locale '" + local + "' not found, skipping JVM returned language parsing.");
+			}
+			source = "system";
+		}
+		else if(!(lang = new File("./resources/lang/" + Settings.LANGUAGE.value + ".lang")).exists()){
+			Logging.log("Locale '" + local + "' not found, skipping in Settings defined language parsing.");
+			source = "settings";
+		}
+		if(source != null && lang.exists()){
+			if(loadLang(SELECTED, lang)) Logging.log("Loaded " + source + " specified translation.");
+			else Logging.log("Error while loading " + source + " specified translation.");
+		}
 		//
-		scanner = new Scanner(file, "UTF-8");
-		while(scanner.hasNextLine()){
-			String string = scanner.nextLine();
-			if(string.length() < 3 || string.startsWith("#") || string.startsWith("//")) continue;
-			String[] str = string.split("="); if(str.length < 2) continue; SEL.put(str[0], str[1]);
-		} scanner.close();
+		UNNAMED_POLYGON = translate("polygon.unnamed");
+	}
+
+	private static boolean loadLang(Map<String, String> map, File file){
+		try{
+			Scanner scanner = new Scanner(file, StandardCharsets.UTF_8.name());
+			while(scanner.hasNextLine()){
+				String string = scanner.nextLine().trim();
+				if(string.length() < 3 || string.startsWith("#") || string.startsWith("//")) continue;
+				String[] str = string.split("=");
+				if(str.length < 2) continue;
+				map.put(str[0], str[1]);
+			}
+			scanner.close();
+			return true;
+		}
+		catch(Exception e){
+			Logging.log(e);
+			return false;
+		}
+	}
+
+	public static String translate(String string){
+		if(SELECTED.containsKey(string)) return SELECTED.get(string);
+		return DEFAULT.containsKey(string) ? DEFAULT.get(string) : string;
 	}
 	
-	public static void append(String key, String fill) {
-		try{ Files.write(ROOT_FILE.toPath(), ("\n" + key + "=" + fill).getBytes(), StandardOpenOption.APPEND); }
-		catch(IOException e){ e.printStackTrace(); }
+	public static String format(String str, Object... args){
+		String string = translate(str);
+		return String.format(string, args);
+	}
+
+	public static Translations translate(String... strs){
+		String[] res = new String[strs.length];
+		float[] len = new float[strs.length];
+		for(int i = 0; i < res.length; i++){
+			res[i] = translate(strs[i]);
+			len[i] = FontSizeUtil.getWidth(res[i]);
+		}
+		return new Translations(res, len);
 	}
 	
-	public static String translate(String key){
-		if(key.startsWith("#")) return key.substring(1);
-		return SEL.containsKey(key) ? SEL.get(key) : DEF.containsKey(key) ? DEF.get(key) : key;
-	}
-	
-	/*public static String translate(String key, String fill){
-		if(key.startsWith("#")) return key.substring(1);
-		if(SEL.containsKey(key)) return SEL.get(key);
-		if(DEF.containsKey(key)) return DEF.get(key);
-		DEF.put(key, fill); append(key, fill); return fill;
-	}*/
-	
-	public static String format(String key, Object... objects){
-		String string = translate(key); return String.format(string, objects);
+	public static class Translations {
+		
+		public String[] results;
+		public float[] lengths;
+		public float longest, shortest;
+
+		public Translations(String[] res, float[] len){
+			this.results = res;
+			this.lengths = len;
+			shortest = lengths[0];
+			longest = lengths[0];
+			if(len.length < 2) return;
+			for(int i = 1; i < len.length; i++){
+				if(len[i] > longest) longest = len[i];
+				if(len[i] < shortest) shortest = len[i];
+			}
+		}
+		
 	}
 
 }
